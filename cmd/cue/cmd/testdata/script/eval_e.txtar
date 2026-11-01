@@ -27,12 +27,30 @@ cmp stdout expect/issue4202/stdout
 cmp stdout expect/shared/stdout
 cmp stderr expect/shared/stderr
 
-# An expression is checked for closedness like the same expression in a file.
+# An expression is checked for closedness like the same expression in a file,
+# whether it is evaluated, exported or printed as a definition, and also when
+# the conjunction is nested in a struct literal.
+# See https://cuelang.org/issue/XXXX.
 ! exec cue eval -e '#S & d' closed/x.cue
 ! stdout .
 cmp stderr expect/closed/stderr
-! exec cue export -e '{y: #S & d}' closed/x.cue
+! exec cue export -e '#S & d' closed/x.cue
+! stdout .
+cmp stderr expect/closed/stderr
+! exec cue def -e '#S & d' closed/x.cue
+! stdout .
+cmp stderr expect/closed/stderr
+! exec cue eval -e '{y: #S & d}' closed/x.cue
+! stdout .
 cmp stderr expect/closed-nested/stderr
+! exec cue export -e '{y: #S & d}' closed/x.cue
+! stdout .
+cmp stderr expect/closed-nested/stderr
+# Issue #2680: close in an expression closes the struct it is given.
+! exec cue eval -e 'close({}) & w' closed/x.cue
+! stdout .
+cmp stderr expect/closed-close/stderr
+# A field the definition allows is still accepted.
 exec cue eval -e '#S & {a: 1}' closed/x.cue
 cmp stdout expect/closed-allowed/stdout
 
@@ -125,11 +143,15 @@ x.a: conflicting values "bad" and int (mismatched types string and int):
 -- closed/x.cue --
 #S: {a?: int}
 d: {b: 1}
+w: {a: 1}
 -- expect/closed/stderr --
 b: field not allowed:
     ./closed/x.cue:2:5
 -- expect/closed-nested/stderr --
 y.b: field not allowed:
     ./closed/x.cue:2:5
+-- expect/closed-close/stderr --
+a: field not allowed:
+    ./closed/x.cue:3:5
 -- expect/closed-allowed/stdout --
 a: 1

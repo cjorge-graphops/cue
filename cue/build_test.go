@@ -151,6 +151,40 @@ func TestBuildExprClose(t *testing.T) {
 	}
 }
 
+// TestBuildExprClosedness checks that a value built by
+// [cue.Context.BuildExpr] is checked for closedness like the same expression
+// in a file, without needing to be unified with anything else.
+//
+// See https://cuelang.org/issue/XXXX.
+func TestBuildExprClosedness(t *testing.T) {
+	ctx := cuecontext.New()
+	scope := ctx.CompileString(`
+#S: {a?: int}
+d: {b: 1}
+w: {a: 1}
+`)
+	qt.Assert(t, qt.IsNil(scope.Err()))
+
+	build := func(src string) cue.Value {
+		expr, err := parser.ParseExpr("test", src)
+		qt.Assert(t, qt.IsNil(err))
+		return ctx.BuildExpr(expr, cue.Scope(scope))
+	}
+
+	// A definition does not allow a field it does not declare, at the top
+	// level of the expression or nested in a struct literal.
+	qt.Assert(t, qt.ErrorMatches(build("#S & d").Validate(), `b: field not allowed`))
+	qt.Assert(t, qt.ErrorMatches(build("{y: #S & d}").Validate(), `y.b: field not allowed`))
+
+	// Neither does a struct closed with close; see https://cuelang.org/issue/2680.
+	qt.Assert(t, qt.ErrorMatches(build("close({}) & w").Validate(), `a: field not allowed`))
+
+	// A field the definition declares is still allowed.
+	v := build("#S & {a: 1}")
+	qt.Assert(t, qt.IsNil(v.Validate()))
+	qt.Assert(t, qt.Equals(fmt.Sprint(v), `{a: 1}`))
+}
+
 func TestBuildExprCloseList(t *testing.T) {
 	// Closing a list in an expression without a file used to panic while
 	// finalizing a structurally shared node. The list must also be closed.
