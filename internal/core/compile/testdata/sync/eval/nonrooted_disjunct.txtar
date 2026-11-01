@@ -2,6 +2,7 @@
 # complete is completed within that disjunct: an error in it eliminates the
 # disjunct, and fails neither a field outside the disjunction nor another
 # disjunct. See also nonrooted.txtar.
+# https://cuelang.org/issue/XXXX
 
 -- in.cue --
 #C: {
@@ -34,12 +35,32 @@ lets: {
 
 	let L4 = {x: 1 & !=okOther.a, out: x + 1}
 	okOther: {a: L4.out} | *{b: 1}
+
+	// The let is read below the top of the disjunct, or by a list disjunct.
+	let L5 = {v: 1 & >1, out: v + 1}
+	errDeep: {a: {b: L5.out}} | {b: 1}
+	let L6 = {v: 1 & >1, out: v + 1}
+	errList: [L6.out] | 1
+
+	// Each disjunct reading the let fails on its own error.
+	let L7 = {v: 1 & >1, out: v + 1}
+	errMany: {a: L7.out, c: 1} | {a: L7.out, c: 2} | {c: 3}
+
+	// The error is not lost when every disjunct reads the let.
+	let L8 = {v: 1 & >1, out: v + 1}
+	errAll: {a: L8.out} | {b: L8.out}
+
+	// A scalar disjunct reading the let is eliminated, as before.
+	let L9 = {v: 1 & >1, out: v + 1}
+	scalar: L9.out | 1
 }
 
 // None of the nodes of a disjunction inside an inline struct is rooted.
 inline: {
 	err: ({x: *{a: (#C & {id: "storage"}).out, c: 1} | {c: 2}}).x.c
 	ok:  ({x: *{a: (#C & {id: "other"}).out, c: 1} | {c: 2}}).x.c
+
+	errAll: ({x: {a: (#C & {id: "storage"}).out} | {b: (#C & {id: "storage"}).out}}).x
 }
 inlineLet: {
 	let L = #C & {id: "storage"}
@@ -121,6 +142,51 @@ guard: {
     }|*{
       b: 1
     })
+    let L5#5 = {
+      v: (1 & >1)
+      out: (〈0;v〉 + 1)
+    }
+    errDeep: ({
+      a: {
+        b: 〈2;let L5#5〉.out
+      }
+    }|{
+      b: 1
+    })
+    let L6#6 = {
+      v: (1 & >1)
+      out: (〈0;v〉 + 1)
+    }
+    errList: ([
+      〈1;let L6#6〉.out,
+    ]|1)
+    let L7#7 = {
+      v: (1 & >1)
+      out: (〈0;v〉 + 1)
+    }
+    errMany: ({
+      a: 〈1;let L7#7〉.out
+      c: 1
+    }|{
+      a: 〈1;let L7#7〉.out
+      c: 2
+    }|{
+      c: 3
+    })
+    let L8#8 = {
+      v: (1 & >1)
+      out: (〈0;v〉 + 1)
+    }
+    errAll: ({
+      a: 〈1;let L8#8〉.out
+    }|{
+      b: 〈1;let L8#8〉.out
+    })
+    let L9#9 = {
+      v: (1 & >1)
+      out: (〈0;v〉 + 1)
+    }
+    scalar: (〈0;let L9#9〉.out|1)
   }
   inline: {
     err: {
@@ -143,14 +209,25 @@ guard: {
         c: 2
       })
     }.x.c
+    errAll: {
+      x: ({
+        a: (〈3;#C〉 & {
+          id: "storage"
+        }).out
+      }|{
+        b: (〈3;#C〉 & {
+          id: "storage"
+        }).out
+      })
+    }.x
   }
   inlineLet: {
-    let L#5 = (〈1;#C〉 & {
+    let L#A = (〈1;#C〉 & {
       id: "storage"
     })
     err: {
       x: (*{
-        a: 〈2;let L#5〉.out
+        a: 〈2;let L#A〉.out
         c: 1
       }|{
         c: 2
@@ -159,23 +236,23 @@ guard: {
   }
   guard: {
     #E: {
-      let r#6 = {
+      let r#B = {
         role: ("b" & !="b")
       }
-      let names#7multi = {
-        for k, v in 〈1;let r#6〉 if (〈0;v〉 != "") {
+      let names#Cmulti = {
+        for k, v in 〈1;let r#B〉 if (〈0;v〉 != "") {
           〈1;k〉: 〈1;v〉
         }
       }
-      let picked#8multi = {
+      let picked#Dmulti = {
         for k, _ in {
           other: 1
-        } if (〈2;let names#7〉[〈0;k〉] != _|_(explicit error (_|_ literal) in source)) {
+        } if (〈2;let names#C〉[〈0;k〉] != _|_(explicit error (_|_ literal) in source)) {
           〈1;k〉: true
         }
       }
       out: [
-        for k, _ in 〈1;let picked#8〉 {
+        for k, _ in 〈1;let picked#D〉 {
           〈1;k〉
         },
       ]

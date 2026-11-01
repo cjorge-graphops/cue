@@ -2,6 +2,7 @@
 # complete is completed within that disjunct: an error in it eliminates the
 # disjunct, and fails neither a field outside the disjunction nor another
 # disjunct. See also nonrooted.txtar.
+# https://cuelang.org/issue/XXXX
 
 -- in.cue --
 #C: {
@@ -34,12 +35,32 @@ lets: {
 
 	let L4 = {x: 1 & !=okOther.a, out: x + 1}
 	okOther: {a: L4.out} | *{b: 1} @test(eq, *{b: 1} | {a: 2})
+
+	// The let is read below the top of the disjunct, or by a list disjunct.
+	let L5 = {v: 1 & >1, out: v + 1}
+	errDeep: {a: {b: L5.out}} | {b: 1} @test(eq, {b: 1})
+	let L6 = {v: 1 & >1, out: v + 1}
+	errList: [L6.out] | 1 @test(eq, 1)
+
+	// Each disjunct reading the let fails on its own error.
+	let L7 = {v: 1 & >1, out: v + 1}
+	errMany: {a: L7.out, c: 1} | {a: L7.out, c: 2} | {c: 3} @test(eq, {c: 3})
+
+	// The error is not lost when every disjunct reads the let.
+	let L8 = {v: 1 & >1, out: v + 1}
+	errAll: {a: L8.out} | {b: L8.out} @test(err, code=eval, contains="invalid value 1 (out of bound >1)")
+
+	// A scalar disjunct reading the let is eliminated, as before.
+	let L9 = {v: 1 & >1, out: v + 1}
+	scalar: L9.out | 1 @test(eq, 1)
 }
 
 // None of the nodes of a disjunction inside an inline struct is rooted.
 inline: {
 	err: ({x: *{a: (#C & {id: "storage"}).out, c: 1} | {c: 2}}).x.c @test(eq, 2)
 	ok:  ({x: *{a: (#C & {id: "other"}).out, c: 1} | {c: 2}}).x.c   @test(eq, 1)
+
+	errAll: ({x: {a: (#C & {id: "storage"}).out} | {b: (#C & {id: "storage"}).out}}).x @test(err, code=eval, contains="invalid value \"storage\"")
 }
 inlineLet: {
 	let L = #C & {id: "storage"}
@@ -70,15 +91,22 @@ nested.#B.sub: structural cycle
 nested.#B.sub.id: non-concrete value string in operand to +:
     ./in.cue:10:25
     ./in.cue:10:13
+[eval] lets.L8.v: invalid value 1 (out of bound >1):
+    ./in.cue:43:19
+    ./in.cue:43:15
+[eval] id: invalid value "storage" (out of bound !="storage"):
+    ./in.cue:2:16
+    ./in.cue:2:7
+    ./in.cue:56:30
 -- out/eval/stats --
-Leaks:  55
-Freed:  123
-Reused: 106
-Allocs: 72
+Leaks:  76
+Freed:  172
+Reused: 155
+Allocs: 93
 Retain: 0
 
-Unifications: 127
-Conjuncts:    229
-Disjuncts:    24
+Unifications: 178
+Conjuncts:    315
+Disjuncts:    37
 
-NumCloseIDs: 27
+NumCloseIDs: 33
