@@ -154,6 +154,12 @@ func (v *Vertex) unify(c *OpContext, flags Flags) bool {
 		return false
 	}
 
+	// A comprehension pre-evaluating a try clause has yet to yield into v.
+	// See [scheduler.hasPreEvaluatingParentTask].
+	if mode == finalize && v.state != nil && v.state.hasPreEvaluatingParentTask() {
+		mode = attemptOnly
+	}
+
 	if n := v.state; n != nil && n.ctx.opID != c.opID {
 		// TODO: we could clear the closedness information.
 		// v.state = nil
