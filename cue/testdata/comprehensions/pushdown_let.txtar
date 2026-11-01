@@ -125,15 +125,128 @@ elseClause: {
 	}
 	@test(eq, {x: {on: true, out: 2, n: 1}})
 }
+
+// An embedded let can declare fields that are not known in advance, so the
+// comprehension is still not pushed down, and the conjunct is still
+// dropped, as it is with a dynamic field, a pattern constraint or ... in the
+// body instead.
+letEmbed: {
+	x: {
+		on: *false | bool
+		if on {
+			let v = {out: 1}
+			v
+		}
+		n: 1
+	}
+	if x.n == 1 {
+		x: on: true
+	}
+	@test(eq, {x: {on: *false | bool, n: 1}}, incorrect)
+	@test(eq:todo, {x: {on: true, out: 1, n: 1}})
+}
+
+// Issue 4487 with a let in the guarded body. The guard reads a list built
+// by a comprehension over a struct whose comprehensions yield nothing.
+issue4487: {
+	empty: {
+		q: {
+			a: 0
+			if false {b: 1}
+			if false {c: 2}
+		}
+		n: [if len(q) > 1 {q}]
+		if len(n) == 0 {
+			let m = "empty"
+			out: m
+		}
+		@test(eq, {q: {a: 0}, n: [], out: "empty"})
+	}
+	populated: {
+		q: {
+			a: 0
+			b: 1
+			if false {c: 2}
+			if false {d: 3}
+		}
+		n: [if len(q) > 1 {q}]
+		if len(n) != 0 {
+			let m = n
+			out: m
+		}
+		@test(eq, {
+			q: {a: 0, b: 1}
+			n: [{a: 0, b: 1}]
+			out: [{a: 0, b: 1}]
+		})
+	}
+}
+-- issue4448.cue --
+import (
+	"list"
+	"strings"
+)
+
+// Issue 4448 with a let in the guarded body. The let kept the comprehension
+// from being pushed down, so looking up _port forced its guard again, which
+// left the "\(port)" interpolation incomplete. As in issue4448.txtar, the
+// test is sensitive to evaluation order; _s and m are needed to trigger the
+// failure.
+issue4448: {
+	_s: strings.ToLower("A") @test(eq, "a")
+
+	#App: {
+		units: {_elem: {
+			spec: {src: string, tags: _} | {tags: _}
+			if spec != _|_ {
+				let v = 1
+				_w: v
+			}
+		}}
+		m: units._elem
+	}
+
+	#Mixin: {
+		#cfg: {
+			entries: w: {
+				_lines: ["\(port)"]
+				port: _
+			}
+			_all: list.Concat([entries.w._lines])
+		}
+
+		...
+	}
+
+	app: #App
+	app: #Mixin
+	app: {
+		#cfg: entries: w: {
+			port: units._elem._port
+		}
+		units: _elem: {
+			_port: 8080 @test(eq, 8080)
+			spec: {
+				src: "x" @test(eq, "x")
+				tags: [#cfg._all] @test(eq, [["8080"]])
+			}
+		}
+	}
+}
+-- out/errors.txt --
+[incomplete] issue4448.#Mixin.#cfg.entries.w._lines.0: invalid interpolation: non-concrete value _ (type _):
+    ./issue4448.cue:28:14
+[incomplete] issue4448.#Mixin.#cfg.entries.w._lines.0: invalid interpolation: non-concrete value _ (type _):
+    ./issue4448.cue:28:14
 -- out/eval/stats --
-Leaks:  19
-Freed:  52
-Reused: 39
-Allocs: 32
+Leaks:  29
+Freed:  128
+Reused: 101
+Allocs: 56
 Retain: 0
 
-Unifications: 51
-Conjuncts:    104
-Disjuncts:    14
+Unifications: 123
+Conjuncts:    206
+Disjuncts:    20
 
-NumCloseIDs: 8
+NumCloseIDs: 18
