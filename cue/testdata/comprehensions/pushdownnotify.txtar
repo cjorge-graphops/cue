@@ -1,0 +1,57 @@
+# Tests a reference to a field that a pushed-down comprehension adds to,
+# resolved while that comprehension is still pending or running, here
+# because its own guard reads the referring field. The reference copies the
+# conjuncts the field has so far, and must receive those the comprehension
+# adds afterwards, although the comprehension no longer holds up the
+# field's parent.
+-- in.cue --
+// The guard reads a field that unifies the field the comprehension adds to.
+reported: {
+	@test(permute, count=2)
+	a: x & {z: 1}
+	x: on: true
+	if a.on {
+		x: y: 1
+	}
+	@test(eq, {a: {on: true, y: 1, z: 1}, x: {on: true, y: 1}})
+}
+
+// The comprehension adds to a field nested in the one the reference copies.
+nested: {
+	a: x.y.z & {w: 1}
+	x: y: z: on: true
+	if a.on {
+		x: y: z: v: 1
+	}
+	@test(eq, {a: {on: true, v: 1, w: 1}, x: {y: z: {on: true, v: 1}}})
+}
+
+// The guard reads the field the comprehension adds to, so that field is
+// being evaluated when it is copied. The copy is made when another
+// comprehension, run by the lookup of a.b, makes a.b stop sharing x.
+shared: {
+	a: {
+		b: x
+		if b.on {
+			b: {}
+		}
+	}
+	x: a.b & {on: true}
+	if x.on {
+		x: y: 1
+	}
+	@test(eq, {a: b: {on: true, y: 1}, x: {on: true, y: 1}})
+}
+-- out/eval/stats --
+Leaks:  0
+Freed:  27
+Reused: 15
+Allocs: 12
+Retain: 0
+
+Unifications: 27
+Conjuncts:    49
+Disjuncts:    0
+Notifications: 3
+
+NumCloseIDs: 4
