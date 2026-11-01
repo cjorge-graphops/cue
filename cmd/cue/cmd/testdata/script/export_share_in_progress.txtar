@@ -1,0 +1,25 @@
+# A field sharing a reference that meets a disjunction, selected from within
+# an embedded expression of the referenced vertex, does not force that
+# expression before it adds its fields. Evaluation gave the right result,
+# but export then panicked with "not properly initialized".
+# https://cuelang.org/issue/XXXX
+
+exec cue export x.cue
+cmp stdout want
+
+-- x.cue --
+#S: {...}
+#A: #S | int
+x: {a: 1, [if out.a == 1 {b: 2}, {}][0]}
+out: x & #A
+-- want --
+{
+    "x": {
+        "a": 1,
+        "b": 2
+    },
+    "out": {
+        "a": 1,
+        "b": 2
+    }
+}
