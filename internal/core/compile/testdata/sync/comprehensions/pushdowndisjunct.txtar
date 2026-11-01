@@ -2,6 +2,9 @@
 # comprehension is a parent task of the fields its body declares, and runs in
 # each disjunct after the struct is cloned for it. Those fields must remain
 # pending in the disjunct until it has run, rather than being taken as absent.
+# A comprehension outside the struct is not cloned, and does not add to the
+# disjunct.
+# https://cuelang.org/issue/XXXX
 -- in.cue --
 // The comprehension iterates over the field it is in.
 self: {
@@ -29,6 +32,37 @@ guard: {
 		a: 1
 		if out.b == _|_ {b: 1}
 	}
+}
+
+// The disjunction is unified in a separate declaration, through a definition,
+// and the comprehension is next to another one.
+definition: {
+	#M: {...}
+	x: {
+		if true {a: 1}
+		for k, v in out {b: v}
+	}
+	out: x
+	out: #M | int
+}
+
+// A comprehension outside the field adds to the field, but is not cloned for
+// its disjuncts and does not add to them. Its guard needs the disjunction to
+// be resolved, so the disjunction remains unresolved.
+outside: {
+	out: {a: 1} | {a: 2}
+	if out.a == 1 {out: b: 2}
+}
+
+// A reference to a field that a comprehension adds to later, from a field
+// unified with a disjunction, is a different bug, which is not fixed here and
+// is reported separately.
+args: {
+	x: {
+		args: a: 1
+		if out.a == 1 {args: b: 2}
+	}
+	out: x.args & ({...} | int)
 }
 -- out/compile --
 --- in.cue
@@ -63,5 +97,47 @@ guard: {
         b: 1
       }
     })
+  }
+  definition: {
+    #M: {
+      ...
+    }
+    x: {
+      if true {
+        a: 1
+      }
+      for k, v in 〈1;out〉 {
+        b: 〈1;v〉
+      }
+    }
+    out: 〈0;x〉
+    out: (〈0;#M〉|int)
+  }
+  outside: {
+    out: ({
+      a: 1
+    }|{
+      a: 2
+    })
+    if (〈0;out〉.a == 1) {
+      out: {
+        b: 2
+      }
+    }
+  }
+  args: {
+    x: {
+      args: {
+        a: 1
+      }
+      if (〈1;out〉.a == 1) {
+        args: {
+          b: 2
+        }
+      }
+    }
+    out: (〈0;x〉.args & ({
+      ...
+    }|int))
   }
 }
