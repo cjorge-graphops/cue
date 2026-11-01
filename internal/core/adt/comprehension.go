@@ -190,6 +190,12 @@ func (n *nodeContext) processComprehension(d *envYield, state vertexStatus) *Bot
 		condition: allKnown,
 		mode:      ignore,
 	}, d.addEnv); err != nil {
+		// Cycles are reported by lookups of the arcs the comprehension may
+		// declare.
+		if err.Code != CycleError {
+			pushDownErr(n, d.comp, MakeConjunct(d.env, err, d.id))
+		}
+
 		if err.IsIncomplete() {
 			return err
 		}
@@ -304,6 +310,42 @@ func pushDownDeps(n *nodeContext, t *task, x Node) condition {
 	}
 
 	return completes | allTasksCompleted
+}
+
+// pushDownErr adds c, the error of the clauses of a comprehension, as a
+// conjunct to the arcs for the fields that x, its body or else clause,
+// declares. [pushDownDeps] lets these arcs complete without waiting for n,
+// which records the error, so they would otherwise complete as if the
+// comprehension yielded no value. Like a conjunct the comprehension yields,
+// the error is then also seen where the conjuncts of such an arc are used, as
+// in an embedding.
+func pushDownErr(n *nodeContext, x Node, c Conjunct) {
+	switch x := x.(type) {
+	case *Comprehension:
+		pushDownErr(n, x.Value, c)
+		if x.Fallback != nil {
+			pushDownErr(n, x.Fallback, c)
+		}
+
+	case *StructLit:
+		for _, d := range x.Decls {
+			switch d := d.(type) {
+			case *Field:
+				arc := n.node.lookupArc(d.Label)
+				if arc == nil {
+					continue
+				}
+				if arcState := arc.getBareState(n.ctx); arcState != nil {
+					arc.insertConjunct(n.ctx, c, c.CloseInfo, arc.ArcType, false, false)
+					pushDownErr(arcState, d.Value, c)
+				}
+
+			default:
+				// Embeddings, other comprehensions.
+				pushDownErr(n, d, c)
+			}
+		}
+	}
 }
 
 // isPushedDownComp reports whether t is a comprehension task whose body and
