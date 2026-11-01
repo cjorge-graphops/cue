@@ -27,6 +27,15 @@ cmp stdout expect/issue4202/stdout
 cmp stdout expect/shared/stdout
 cmp stderr expect/shared/stderr
 
+# An expression is checked for closedness like the same expression in a file.
+! exec cue eval -e '#S & d' closed/x.cue
+! stdout .
+cmp stderr expect/closed/stderr
+! exec cue export -e '{y: #S & d}' closed/x.cue
+cmp stderr expect/closed-nested/stderr
+exec cue eval -e '#S & {a: 1}' closed/x.cue
+cmp stdout expect/closed-allowed/stdout
+
 -- expect/nonExist/stdout --
 -- expect/nonExist/stderr --
 reference "nonExist" not found:
@@ -113,3 +122,14 @@ x.a: conflicting values "bad" and int (mismatched types string and int):
     ./shared/x.cue:1:9
     ./shared/x.cue:2:4
     ./shared/x.cue:2:13
+-- closed/x.cue --
+#S: {a?: int}
+d: {b: 1}
+-- expect/closed/stderr --
+b: field not allowed:
+    ./closed/x.cue:2:5
+-- expect/closed-nested/stderr --
+y.b: field not allowed:
+    ./closed/x.cue:2:5
+-- expect/closed-allowed/stdout --
+a: 1
