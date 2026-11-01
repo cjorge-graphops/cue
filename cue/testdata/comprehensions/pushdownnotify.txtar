@@ -4,6 +4,7 @@
 # conjuncts the field has so far, and must receive those the comprehension
 # adds afterwards, although the comprehension no longer holds up the
 # field's parent.
+# https://cuelang.org/issue/XXXX
 -- in.cue --
 // The guard reads a field that unifies the field the comprehension adds to.
 reported: {
@@ -42,16 +43,70 @@ shared: {
 	}
 	@test(eq, {a: b: {on: true, y: 1}, x: {on: true, y: 1}})
 }
+
+// The guard reads the field that unifies the field the comprehension adds
+// to, as in reported. A definition the comprehension adds closes the field,
+// so the reference must reject a field the definition does not allow.
+closedness: {
+	#B: {x: 2}
+	m1: c1 & {y: 3}
+	c1: {x: 2, ...}
+	if m1.x == 2 {
+		c1: #B
+	}
+	@test(err, code=eval, at=m1.y, contains="field not allowed", pos=[2:12])
+}
+
+// The same with the guard reading the field the comprehension adds to,
+// which already worked.
+closednessGuardOwn: {
+	#B: {x: 2}
+	m1: c1 & {y: 3}
+	c1: {x: 2, ...}
+	if c1.x == 2 {
+		c1: #B
+	}
+	@test(err, code=eval, at=m1.y, contains="field not allowed", pos=[2:12])
+}
+
+// The same as reported with the guard reading the field the comprehension
+// adds to, which already worked.
+guardOwn: {
+	a: x & {z: 1}
+	x: on: true
+	if x.on {
+		x: y: 1
+	}
+	@test(eq, {a: {on: true, y: 1, z: 1}, x: {on: true, y: 1}})
+}
+
+// A similar shape with the guard reading the field the comprehension adds
+// to, and that field opened with ... before. This change does not affect
+// whether m1 allows y. See https://cuelang.org/issue/4524.
+issue4524: {
+	#B: {x: 2}
+	m1: c1 & {y: 3}
+	c1: #B...
+	if c1.x == 2 {
+		c1: #B
+	}
+	@test(eq, {#B: {x: 2}, m1: {x: 2, y: 3}, c1: {x: 2}})
+}
+-- out/errors.txt --
+[eval] closedness.m1.y: field not allowed:
+    ./in.cue:44:12
+[eval] closednessGuardOwn.m1.y: field not allowed:
+    ./in.cue:56:12
 -- out/eval/stats --
 Leaks:  0
-Freed:  27
-Reused: 15
-Allocs: 12
+Freed:  58
+Reused: 42
+Allocs: 16
 Retain: 0
 
-Unifications: 27
-Conjuncts:    49
+Unifications: 58
+Conjuncts:    108
 Disjuncts:    0
-Notifications: 3
+Notifications: 4
 
-NumCloseIDs: 4
+NumCloseIDs: 12
