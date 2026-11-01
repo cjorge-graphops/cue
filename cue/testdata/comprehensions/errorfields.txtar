@@ -3,6 +3,7 @@
 # rather than taking the value it would have if the comprehension yielded
 # nothing. Each out field is evaluated before the struct it selects from, and
 # so before the struct records the error.
+# https://cuelang.org/issue/XXXX
 -- in.cue --
 @experiment(try)
 
@@ -10,6 +11,17 @@ incomplete: {
 	out: #P.x @test(err, code=incomplete, contains="non-concrete value int in operand to ==", pos=[3:6, 7:5])
 	#P: {
 		x: [...]
+		if b == 1 {
+			x: [1]
+		}
+	}
+	b: int
+}
+
+// The field itself, as the API looks it up in p after evaluating p.
+lookup: {
+	p: {
+		x: [...] @test(err, code=incomplete, contains="non-concrete value int in operand to ==", pos=[1:6, 5:5])
 		if b == 1 {
 			x: [1]
 		}
@@ -40,6 +52,20 @@ fatalElse: {
 		}
 	}
 	b: 1 & 2 @test(err, code=eval, contains="conflicting values 2 and 1", pos=[0:5, 0:9])
+}
+
+// Both clauses declare x.
+incompleteElse: {
+	out: p.x @test(err, code=incomplete, contains="non-concrete value int in operand to ==", pos=[3:6, 9:5])
+	p: {
+		x: [...]
+		if b == 1 {
+			x: [1]
+		} else {
+			x: [2]
+		}
+	}
+	b: int
 }
 
 // The guard fails only after the selection of x.
@@ -101,6 +127,30 @@ nestedComprehension: {
 	b: int
 }
 
+// x is declared in a struct embedded in the body.
+embeddedStruct: {
+	out: p.x @test(err, code=incomplete, contains="non-concrete value int in operand to ==", pos=[3:6, 7:5])
+	p: {
+		x: [...]
+		if b == 1 {
+			{x: [1]}
+		}
+	}
+	b: int
+}
+
+// The source of a for clause, rather than a guard, fails.
+forSource: {
+	out: p.x @test(err, code=incomplete, contains="cannot range over s", pos=[3:12])
+	p: {
+		x: [...]
+		for v in s {
+			x: [v]
+		}
+	}
+	s: _
+}
+
 // x is declared outside the failing comprehension only by another one.
 otherComprehension: {
 	out: p.x @test(err, code=incomplete, contains="non-concrete value int in operand to ==", pos=[2:6, 9:5])
@@ -142,6 +192,19 @@ instance: {
 	}
 }
 
+// A try clause whose ?-marked reference fails yields nothing, without an
+// error.
+tryAbsent: {
+	out: p.x @test(eq, [])
+	p: {
+		x: [...]
+		try B = c.b? {
+			x: [B]
+		}
+	}
+	c: {}
+}
+
 conditionFalse: {
 	out: p.x @test(eq, [])
 	p: {
@@ -159,76 +222,95 @@ conditionFalse: {
 [incomplete] incomplete.#P: non-concrete value int in operand to ==:
     ./in.cue:7:6
     ./in.cue:11:5
-[eval] fatal.b: conflicting values 2 and 1:
+[incomplete] lookup.p: non-concrete value int in operand to ==:
+    ./in.cue:18:6
     ./in.cue:22:5
-    ./in.cue:22:9
 [eval] fatal.b: conflicting values 2 and 1:
-    ./in.cue:22:5
-    ./in.cue:22:9
+    ./in.cue:33:5
+    ./in.cue:33:9
 [eval] fatal.b: conflicting values 2 and 1:
-    ./in.cue:22:5
-    ./in.cue:22:9
+    ./in.cue:33:5
+    ./in.cue:33:9
+[eval] fatal.b: conflicting values 2 and 1:
+    ./in.cue:33:5
+    ./in.cue:33:9
 [eval] fatalElse.b: conflicting values 2 and 1:
-    ./in.cue:36:5
-    ./in.cue:36:9
+    ./in.cue:47:5
+    ./in.cue:47:9
 [eval] fatalElse.b: conflicting values 2 and 1:
-    ./in.cue:36:5
-    ./in.cue:36:9
+    ./in.cue:47:5
+    ./in.cue:47:9
 [eval] fatalElse.b: conflicting values 2 and 1:
-    ./in.cue:36:5
-    ./in.cue:36:9
+    ./in.cue:47:5
+    ./in.cue:47:9
+[incomplete] incompleteElse.p: non-concrete value int in operand to ==:
+    ./in.cue:55:6
+    ./in.cue:61:5
+[incomplete] incompleteElse.p: non-concrete value int in operand to ==:
+    ./in.cue:55:6
+    ./in.cue:61:5
 [incomplete] requiredMissing.p: required field missing: mode:
-    ./in.cue:44:10
+    ./in.cue:69:10
 [incomplete] requiredMissing.p: required field missing: mode:
-    ./in.cue:44:10
+    ./in.cue:69:10
 [incomplete] embedding.p: non-concrete value int in operand to ==:
-    ./in.cue:56:6
-    ./in.cue:60:5
+    ./in.cue:81:6
+    ./in.cue:85:5
 [incomplete] embedding.p: non-concrete value int in operand to ==:
-    ./in.cue:56:6
-    ./in.cue:60:5
+    ./in.cue:81:6
+    ./in.cue:85:5
 [incomplete] forLoop.p: non-concrete value int in operand to ==:
-    ./in.cue:67:6
-    ./in.cue:71:5
+    ./in.cue:92:6
+    ./in.cue:96:5
 [incomplete] forLoop.p: non-concrete value int in operand to ==:
-    ./in.cue:67:6
-    ./in.cue:71:5
+    ./in.cue:92:6
+    ./in.cue:96:5
 [incomplete] nested.p: non-concrete value int in operand to ==:
-    ./in.cue:78:6
-    ./in.cue:82:5
+    ./in.cue:103:6
+    ./in.cue:107:5
 [incomplete] nested.p: non-concrete value int in operand to ==:
-    ./in.cue:78:6
-    ./in.cue:82:5
+    ./in.cue:103:6
+    ./in.cue:107:5
 [incomplete] nestedComprehension.p: non-concrete value int in operand to ==:
-    ./in.cue:89:6
-    ./in.cue:95:5
+    ./in.cue:114:6
+    ./in.cue:120:5
 [incomplete] nestedComprehension.p: non-concrete value int in operand to ==:
-    ./in.cue:89:6
-    ./in.cue:95:5
+    ./in.cue:114:6
+    ./in.cue:120:5
+[incomplete] embeddedStruct.p: non-concrete value int in operand to ==:
+    ./in.cue:128:6
+    ./in.cue:132:5
+[incomplete] embeddedStruct.p: non-concrete value int in operand to ==:
+    ./in.cue:128:6
+    ./in.cue:132:5
+[incomplete] forSource.p: cannot range over s (incomplete type _):
+    ./in.cue:140:12
+[incomplete] forSource.p: cannot range over s (incomplete type _):
+    ./in.cue:140:12
 [incomplete] otherComprehension.p: non-concrete value int in operand to ==:
-    ./in.cue:102:6
-    ./in.cue:109:5
+    ./in.cue:151:6
+    ./in.cue:158:5
 [incomplete] otherComprehension.p: non-concrete value int in operand to ==:
-    ./in.cue:102:6
-    ./in.cue:109:5
+    ./in.cue:151:6
+    ./in.cue:158:5
 [incomplete] otherField.p: non-concrete value int in operand to ==:
-    ./in.cue:119:6
-    ./in.cue:123:5
+    ./in.cue:168:6
+    ./in.cue:172:5
 [incomplete] otherField.p: non-concrete value int in operand to ==:
-    ./in.cue:119:6
-    ./in.cue:123:5
+    ./in.cue:168:6
+    ./in.cue:172:5
 [incomplete] instance.#P: non-concrete value int in operand to ==:
-    ./in.cue:133:6
-    ./in.cue:131:6
+    ./in.cue:182:6
+    ./in.cue:180:6
 -- out/eval/stats --
 Leaks:  0
-Freed:  65
-Reused: 47
-Allocs: 18
+Freed:  96
+Reused: 72
+Allocs: 24
 Retain: 0
 
-Unifications: 65
-Conjuncts:    91
+Unifications: 96
+Conjuncts:    128
 Disjuncts:    0
 
 NumCloseIDs: 3

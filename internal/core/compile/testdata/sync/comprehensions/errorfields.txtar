@@ -3,12 +3,24 @@
 # rather than taking the value it would have if the comprehension yielded
 # nothing. Each out field is evaluated before the struct it selects from, and
 # so before the struct records the error.
+# https://cuelang.org/issue/XXXX
 -- in.cue --
 @experiment(try)
 
 incomplete: {
 	out: #P.x
 	#P: {
+		x: [...]
+		if b == 1 {
+			x: [1]
+		}
+	}
+	b: int
+}
+
+// The field itself, as the API looks it up in p after evaluating p.
+lookup: {
+	p: {
 		x: [...]
 		if b == 1 {
 			x: [1]
@@ -40,6 +52,20 @@ fatalElse: {
 		}
 	}
 	b: 1 & 2
+}
+
+// Both clauses declare x.
+incompleteElse: {
+	out: p.x
+	p: {
+		x: [...]
+		if b == 1 {
+			x: [1]
+		} else {
+			x: [2]
+		}
+	}
+	b: int
 }
 
 // The guard fails only after the selection of x.
@@ -101,6 +127,30 @@ nestedComprehension: {
 	b: int
 }
 
+// x is declared in a struct embedded in the body.
+embeddedStruct: {
+	out: p.x
+	p: {
+		x: [...]
+		if b == 1 {
+			{x: [1]}
+		}
+	}
+	b: int
+}
+
+// The source of a for clause, rather than a guard, fails.
+forSource: {
+	out: p.x
+	p: {
+		x: [...]
+		for v in s {
+			x: [v]
+		}
+	}
+	s: _
+}
+
 // x is declared outside the failing comprehension only by another one.
 otherComprehension: {
 	out: p.x
@@ -142,6 +192,19 @@ instance: {
 	}
 }
 
+// A try clause whose ?-marked reference fails yields nothing, without an
+// error.
+tryAbsent: {
+	out: p.x
+	p: {
+		x: [...]
+		try B = c.b? {
+			x: [B]
+		}
+	}
+	c: {}
+}
+
 conditionFalse: {
 	out: p.x
 	p: {
@@ -158,6 +221,19 @@ conditionFalse: {
   incomplete: {
     out: 〈0;#P〉.x
     #P: {
+      x: [
+        ...,
+      ]
+      if (〈1;b〉 == 1) {
+        x: [
+          1,
+        ]
+      }
+    }
+    b: int
+  }
+  lookup: {
+    p: {
       x: [
         ...,
       ]
@@ -198,6 +274,24 @@ conditionFalse: {
       }
     }
     b: (1 & 2)
+  }
+  incompleteElse: {
+    out: 〈0;p〉.x
+    p: {
+      x: [
+        ...,
+      ]
+      if (〈1;b〉 == 1) {
+        x: [
+          1,
+        ]
+      } else {
+        x: [
+          2,
+        ]
+      }
+    }
+    b: int
   }
   requiredMissing: {
     out: 〈0;p〉.x
@@ -285,6 +379,36 @@ conditionFalse: {
     }
     b: int
   }
+  embeddedStruct: {
+    out: 〈0;p〉.x
+    p: {
+      x: [
+        ...,
+      ]
+      if (〈1;b〉 == 1) {
+        {
+          x: [
+            1,
+          ]
+        }
+      }
+    }
+    b: int
+  }
+  forSource: {
+    out: 〈0;p〉.x
+    p: {
+      x: [
+        ...,
+      ]
+      for _, v in 〈1;s〉 {
+        x: [
+          〈2;v〉,
+        ]
+      }
+    }
+    s: _
+  }
   otherComprehension: {
     out: 〈0;p〉.x
     p: {
@@ -333,6 +457,20 @@ conditionFalse: {
         ]
       }
     }
+  }
+  tryAbsent: {
+    out: 〈0;p〉.x
+    p: {
+      x: [
+        ...,
+      ]
+      try B = 〈1;c〉.b? {
+        x: [
+          〈2;B〉,
+        ]
+      }
+    }
+    c: {}
   }
   conditionFalse: {
     out: 〈0;p〉.x
